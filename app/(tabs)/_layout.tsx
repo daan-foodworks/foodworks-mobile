@@ -7,8 +7,6 @@ import { SideMenu } from '../../components/SideMenu';
 
 function TabsContent() {
     const { isMenuOpen, closeMenu } = useMenu();
-    const user = useAuthStore((s) => s.user);
-    const isShiftleader = user?.role === 'SHIFTLEADER';
 
     return (
         <>
@@ -19,58 +17,13 @@ function TabsContent() {
                     tabBarActiveTintColor: '#1976D2',
                 }}
             >
+                {/* ZICHTBARE TABS */}
                 <Tabs.Screen
                     name="index"
                     options={{
                         title: 'Dashboard',
                         tabBarIcon: ({ color, size }) => (
                             <MaterialCommunityIcons name="view-dashboard" size={size} color={color} />
-                        ),
-                    }}
-                />
-                <Tabs.Screen
-                    name="projects"
-                    options={{
-                        title: 'Projecten',
-                        tabBarIcon: ({ color, size }) => (
-                            <MaterialCommunityIcons name="folder-multiple" size={size} color={color} />
-                        ),
-                    }}
-                />
-                <Tabs.Screen
-                    name="ritten"
-                    options={{
-                        title: 'Ritten',
-                        tabBarIcon: ({ color, size }) => (
-                            <MaterialCommunityIcons name="truck-outline" size={size} color={color} />
-                        ),
-                    }}
-                />
-                <Tabs.Screen
-                    name="tasks"
-                    options={{
-                        title: 'Taken',
-                        tabBarIcon: ({ color, size }) => (
-                            <MaterialCommunityIcons name="checkbox-marked-circle" size={size} color={color} />
-                        ),
-                    }}
-                />
-                <Tabs.Screen
-                    name="customers"
-                    options={{
-                        title: 'Klanten',
-                        href: isShiftleader ? null : undefined,
-                        tabBarIcon: ({ color, size }) => (
-                            <MaterialCommunityIcons name="account-group" size={size} color={color} />
-                        ),
-                    }}
-                />
-                <Tabs.Screen
-                    name="voorraad"
-                    options={{
-                        title: 'Voorraad',
-                        tabBarIcon: ({ color, size }) => (
-                            <MaterialCommunityIcons name="package-variant-closed" size={size} color={color} />
                         ),
                     }}
                 />
@@ -84,11 +37,11 @@ function TabsContent() {
                     }}
                 />
                 <Tabs.Screen
-                    name="notifications"
+                    name="operationeel"
                     options={{
-                        title: 'Notificaties',
+                        title: 'Operationeel',
                         tabBarIcon: ({ color, size }) => (
-                            <MaterialCommunityIcons name="bell" size={size} color={color} />
+                            <MaterialCommunityIcons name="lightning-bolt" size={size} color={color} />
                         ),
                     }}
                 />
@@ -101,6 +54,15 @@ function TabsContent() {
                         ),
                     }}
                 />
+
+                {/* VERBORGEN TABS (blijven als route bestaan) */}
+                <Tabs.Screen name="projects" options={{ href: null }} />
+                <Tabs.Screen name="ritten" options={{ href: null }} />
+                <Tabs.Screen name="tasks" options={{ href: null }} />
+                <Tabs.Screen name="customers" options={{ href: null }} />
+                <Tabs.Screen name="voorraad" options={{ href: null }} />
+                <Tabs.Screen name="leveringen" options={{ href: null }} />
+                <Tabs.Screen name="notifications" options={{ href: null }} />
             </Tabs>
         </>
     );
