@@ -13,30 +13,56 @@ import { useQuery } from '@tanstack/react-query';
 import { directApi } from '../../lib/directApi';
 import { useAuthStore } from '../../stores/authStore';
 import { useMenu } from '../../contexts/MenuContext';
+import { isToday, format } from 'date-fns';
+import { nl } from 'date-fns/locale';
+
+const PRIORITY_COLOR: Record<string, string> = {
+    HIGH: '#EF4444',
+    MEDIUM: '#F59E0B',
+    LOW: '#10B981',
+};
 
 export default function DashboardScreen() {
     const router = useRouter();
-    const { user, clearAuth } = useAuthStore();
+    const { user } = useAuthStore();
     const { openMenu } = useMenu();
 
-    // Fetch dashboard stats
-    const { data: stats } = useQuery({
-        queryKey: ['dashboard-stats'],
-        queryFn: async () => {
-            const projects = await directApi.projects.getAll();
-
-            return {
-                totalProjects: projects.length,
-                activeProjects: projects.filter((p: any) => p.status === 'ACTIVE').length,
-                plannedProjects: projects.filter((p: any) => p.status === 'PLANNED').length,
-            };
-        },
+    const { data: projects } = useQuery({
+        queryKey: ['dashboard-projects'],
+        queryFn: () => directApi.projects.getAll(),
     });
 
-    const handleLogout = async () => {
-        await clearAuth();
-        router.replace('/(auth)/login');
-    };
+    const { data: tasks } = useQuery({
+        queryKey: ['dashboard-tasks'],
+        queryFn: () => directApi.tasks.getAll(),
+    });
+
+    const stats = React.useMemo(() => {
+        if (!projects) return { total: 0, active: 0, planned: 0 };
+        return {
+            total: projects.length,
+            active: (projects as any[]).filter((p) => p.status === 'ACTIVE').length,
+            planned: (projects as any[]).filter((p) => p.status === 'PLANNED').length,
+        };
+    }, [projects]);
+
+    const todayEvents = React.useMemo(() => {
+        if (!projects) return [];
+        return (projects as any[])
+            .filter((p) => p.eventStartDate && isToday(new Date(p.eventStartDate)))
+            .slice(0, 3);
+    }, [projects]);
+
+    const openTasks = React.useMemo(() => {
+        if (!tasks) return [];
+        return (tasks as any[])
+            .filter((t) => t.status === 'TODO')
+            .sort((a, b) => {
+                const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+                return (order[a.priority as keyof typeof order] ?? 1) - (order[b.priority as keyof typeof order] ?? 1);
+            })
+            .slice(0, 3);
+    }, [tasks]);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -44,9 +70,7 @@ export default function DashboardScreen() {
                 <View>
                     {/* Header Actions */}
                     <View style={styles.actionWrapper}>
-                        <TouchableOpacity
-                            onPress={openMenu}
-                            style={{ marginRight: 'auto' }}>
+                        <TouchableOpacity onPress={openMenu} style={{ marginRight: 'auto' }}>
                             <View style={styles.action}>
                                 <FeatherIcon color="#6a99e3" name="menu" size={22} />
                             </View>
@@ -65,7 +89,7 @@ export default function DashboardScreen() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Welcome Section */}
+                    {/* Welcome */}
                     <Text style={styles.title}>
                         Welkom, {user?.name?.split(' ')[0] || 'Gebruiker'}!
                     </Text>
@@ -79,8 +103,8 @@ export default function DashboardScreen() {
                             <View style={styles.statIconContainer}>
                                 <FeatherIcon name="briefcase" size={24} color="#3B82F6" />
                             </View>
-                            <Text style={styles.statValue}>{stats?.totalProjects || 0}</Text>
-                            <Text style={styles.statLabel}>Totaal Projecten</Text>
+                            <Text style={styles.statValue}>{stats.total}</Text>
+                            <Text style={styles.statLabel}>Totaal{'\n'}Projecten</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -89,8 +113,8 @@ export default function DashboardScreen() {
                             <View style={[styles.statIconContainer, { backgroundColor: '#DCFCE7' }]}>
                                 <FeatherIcon name="activity" size={24} color="#10B981" />
                             </View>
-                            <Text style={styles.statValue}>{stats?.activeProjects || 0}</Text>
-                            <Text style={styles.statLabel}>Actieve Projecten</Text>
+                            <Text style={styles.statValue}>{stats.active}</Text>
+                            <Text style={styles.statLabel}>Actieve{'\n'}Projecten</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -99,59 +123,81 @@ export default function DashboardScreen() {
                             <View style={[styles.statIconContainer, { backgroundColor: '#FEF3C7' }]}>
                                 <FeatherIcon name="clock" size={24} color="#F59E0B" />
                             </View>
-                            <Text style={styles.statValue}>{stats?.plannedProjects || 0}</Text>
-                            <Text style={styles.statLabel}>Geplande Projecten</Text>
+                            <Text style={styles.statValue}>{stats.planned}</Text>
+                            <Text style={styles.statLabel}>Geplande{'\n'}Projecten</Text>
                         </TouchableOpacity>
                     </View>
 
-                    {/* Quick Actions */}
-                    <Text style={styles.sectionTitle}>Snelle Acties</Text>
-                    <View style={styles.quickActions}>
-                        <TouchableOpacity
-                            style={styles.quickActionCard}
-                            onPress={() => router.push('/(tabs)/projects')}>
-                            <View style={styles.quickActionIcon}>
-                                <FeatherIcon name="folder" size={28} color="#3B82F6" />
-                            </View>
-                            <Text style={styles.quickActionText}>Projecten</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.quickActionCard}
-                            onPress={() => router.push('/(tabs)/tasks')}>
-                            <View style={styles.quickActionIcon}>
-                                <FeatherIcon name="check-square" size={28} color="#10B981" />
-                            </View>
-                            <Text style={styles.quickActionText}>Taken</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.quickActionCard}
-                            onPress={() => router.push('/(tabs)/customers')}>
-                            <View style={styles.quickActionIcon}>
-                                <FeatherIcon name="users" size={28} color="#8B5CF6" />
-                            </View>
-                            <Text style={styles.quickActionText}>Klanten</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.quickActionCard}
-                            onPress={() => router.push('/dagplanning' as any)}>
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
-                                <FeatherIcon name="map" size={28} color="#F59E0B" />
-                            </View>
-                            <Text style={styles.quickActionText}>Dagplanning</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.quickActionCard}
-                            onPress={handleLogout}>
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#FEE2E2' }]}>
-                                <FeatherIcon name="log-out" size={28} color="#EF4444" />
-                            </View>
-                            <Text style={styles.quickActionText}>Uitloggen</Text>
+                    {/* Vandaag op de agenda */}
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Vandaag op de agenda</Text>
+                        <TouchableOpacity onPress={() => router.push('/(tabs)/agenda')}>
+                            <Text style={styles.sectionLink}>Bekijk agenda →</Text>
                         </TouchableOpacity>
                     </View>
+
+                    {todayEvents.length === 0 ? (
+                        <View style={styles.emptyCard}>
+                            <FeatherIcon name="calendar" size={20} color="#D1D5DB" />
+                            <Text style={styles.emptyText}>Geen events vandaag</Text>
+                        </View>
+                    ) : (
+                        todayEvents.map((event: any) => (
+                            <TouchableOpacity
+                                key={event.id}
+                                style={styles.eventCard}
+                                onPress={() => router.push(`/project/${event.id}` as any)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.eventDot} />
+                                <View style={styles.eventInfo}>
+                                    <Text style={styles.eventName} numberOfLines={1}>{event.name}</Text>
+                                    <Text style={styles.eventMeta}>
+                                        {event.eventStartDate
+                                            ? format(new Date(event.eventStartDate), 'HH:mm', { locale: nl })
+                                            : ''}
+                                        {event.location ? `  ·  ${event.location}` : ''}
+                                    </Text>
+                                </View>
+                                <FeatherIcon name="chevron-right" size={16} color="#D1D5DB" />
+                            </TouchableOpacity>
+                        ))
+                    )}
+
+                    {/* Openstaande taken */}
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionTitle}>Openstaande taken</Text>
+                        <TouchableOpacity onPress={() => router.push('/(tabs)/tasks')}>
+                            <Text style={styles.sectionLink}>Bekijk alle →</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {openTasks.length === 0 ? (
+                        <View style={styles.emptyCard}>
+                            <FeatherIcon name="check-circle" size={20} color="#D1D5DB" />
+                            <Text style={styles.emptyText}>Geen openstaande taken</Text>
+                        </View>
+                    ) : (
+                        openTasks.map((task: any) => (
+                            <TouchableOpacity
+                                key={task.id}
+                                style={styles.taskCard}
+                                onPress={() => router.push(`/task/${task.id}` as any)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.priorityBar, { backgroundColor: PRIORITY_COLOR[task.priority] ?? '#9CA3AF' }]} />
+                                <View style={styles.taskInfo}>
+                                    <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+                                    {task.project?.name && (
+                                        <Text style={styles.taskMeta}>{task.project.name}</Text>
+                                    )}
+                                </View>
+                                <FeatherIcon name="chevron-right" size={16} color="#D1D5DB" />
+                            </TouchableOpacity>
+                        ))
+                    )}
+
+                    <View style={{ height: 32 }} />
                 </View>
             </ScrollView>
         </SafeAreaView>
@@ -176,14 +222,7 @@ const styles = StyleSheet.create({
         color: '#6B7280',
         marginBottom: 24,
     },
-    sectionTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: '#222',
-        marginTop: 32,
-        marginBottom: 16,
-    },
-    /** Action */
+    /** Header */
     action: {
         width: 48,
         height: 48,
@@ -203,7 +242,7 @@ const styles = StyleSheet.create({
     statsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 16,
+        marginBottom: 32,
     },
     statCard: {
         flex: 1,
@@ -234,29 +273,94 @@ const styles = StyleSheet.create({
         color: '#6B7280',
         textAlign: 'center',
     },
-    /** Quick Actions */
-    quickActions: {
+    /** Section headers */
+    sectionHeader: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        marginHorizontal: -8,
-    },
-    quickActionCard: {
-        width: '50%',
-        padding: 8,
-    },
-    quickActionIcon: {
-        width: '100%',
-        aspectRatio: 1,
-        backgroundColor: '#F0F6FB',
-        borderRadius: 16,
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#111827',
+    },
+    sectionLink: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#3B82F6',
+    },
+    /** Empty state */
+    emptyCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: '#F9FAFB',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 24,
+    },
+    emptyText: {
+        fontSize: 14,
+        color: '#9CA3AF',
+    },
+    /** Event card */
+    eventCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F9FAFB',
+        borderRadius: 12,
+        padding: 14,
         marginBottom: 8,
     },
-    quickActionText: {
-        fontSize: 14,
+    eventDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: '#3B82F6',
+        marginRight: 12,
+    },
+    eventInfo: {
+        flex: 1,
+    },
+    eventName: {
+        fontSize: 15,
         fontWeight: '600',
-        color: '#222',
-        textAlign: 'center',
+        color: '#111827',
+    },
+    eventMeta: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginTop: 2,
+    },
+    /** Task card */
+    taskCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F9FAFB',
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 8,
+        overflow: 'hidden',
+    },
+    priorityBar: {
+        width: 4,
+        height: '100%',
+        borderRadius: 2,
+        marginRight: 12,
+        minHeight: 36,
+    },
+    taskInfo: {
+        flex: 1,
+    },
+    taskTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#111827',
+    },
+    taskMeta: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginTop: 2,
     },
 });

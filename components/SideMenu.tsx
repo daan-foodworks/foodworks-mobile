@@ -28,16 +28,10 @@ interface SideMenuProps {
 }
 
 const menuItems = [
-    { icon: 'grid', label: 'Dashboard', route: '/(tabs)' },
-    { icon: 'calendar', label: 'Agenda', route: '/(tabs)/agenda' },
-    { icon: 'zap', label: 'Operationeel', route: '/(tabs)/operationeel' },
     { icon: 'folder', label: 'Projecten', route: '/(tabs)/projects' },
-    { icon: 'check-square', label: 'Taken', route: '/(tabs)/tasks' },
-    { icon: 'truck', label: 'Ritten', route: '/(tabs)/ritten' },
     { icon: 'users', label: 'Klanten', route: '/(tabs)/customers' },
-    { icon: 'package', label: 'Voorraad', route: '/(tabs)/voorraad' },
-    { icon: 'truck', label: 'Leveringen', route: '/(tabs)/leveringen' },
     { icon: 'bell', label: 'Notificaties', route: '/(tabs)/notifications' },
+    { icon: 'map', label: 'Dagplanning', route: '/dagplanning' },
 ];
 
 export const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose }) => {
