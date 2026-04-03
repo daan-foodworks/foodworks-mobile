@@ -109,7 +109,7 @@ export default function DashboardScreen() {
 
                         <TouchableOpacity
                             style={styles.statCard}
-                            onPress={() => router.push('/(tabs)/projects')}>
+                            onPress={() => router.push('/(tabs)/projects?filter=ACTIVE' as any)}>
                             <View style={[styles.statIconContainer, { backgroundColor: '#DCFCE7' }]}>
                                 <FeatherIcon name="activity" size={24} color="#10B981" />
                             </View>
@@ -119,7 +119,7 @@ export default function DashboardScreen() {
 
                         <TouchableOpacity
                             style={styles.statCard}
-                            onPress={() => router.push('/(tabs)/projects')}>
+                            onPress={() => router.push('/(tabs)/projects?filter=PLANNED' as any)}>
                             <View style={[styles.statIconContainer, { backgroundColor: '#FEF3C7' }]}>
                                 <FeatherIcon name="clock" size={24} color="#F59E0B" />
                             </View>

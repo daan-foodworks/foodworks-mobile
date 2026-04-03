@@ -8,7 +8,7 @@ import {
     ScrollView,
     RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import FeatherIcon from 'react-native-vector-icons/Feather';
 import { useQuery } from '@tanstack/react-query';
 import RBSheet from 'react-native-raw-bottom-sheet';
@@ -28,6 +28,9 @@ export default function ProjectsScreen() {
     const router = useRouter();
     const { openMenu } = useMenu();
 
+    const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
+    const [filterStatus, setFilterStatus] = useState<string | null>(filterParam ?? null);
+
     const sortSheet = React.useRef<any>();
     const [sortBy, setSortBy] = useState('recent');
 
@@ -40,14 +43,15 @@ export default function ProjectsScreen() {
 
     const sortedProjects = useMemo(() => {
         if (!projects) return [];
-        const arr = [...(projects as any[])];
+        let arr = [...(projects as any[])];
+        if (filterStatus) arr = arr.filter((p) => p.status === filterStatus);
         switch (sortBy) {
             case 'name_asc': return arr.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
             case 'name_desc': return arr.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
             case 'status': return arr.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
             default: return arr.sort((a, b) => new Date(b.createdAt || b.eventStartDate || 0).getTime() - new Date(a.createdAt || a.eventStartDate || 0).getTime());
         }
-    }, [projects, sortBy]);
+    }, [projects, sortBy, filterStatus]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -94,6 +98,18 @@ export default function ProjectsScreen() {
                         </TouchableOpacity>
                     </View>
                 </View>
+
+                {/* Active filter chip */}
+                {filterStatus && (
+                    <TouchableOpacity
+                        style={styles.filterChip}
+                        onPress={() => setFilterStatus(null)}
+                        activeOpacity={0.7}>
+                        <View style={[styles.filterDot, { backgroundColor: getStatusColor(filterStatus) }]} />
+                        <Text style={styles.filterChipText}>{getStatusLabel(filterStatus)}</Text>
+                        <FeatherIcon name="x" size={14} color="#6B7280" />
+                    </TouchableOpacity>
+                )}
 
                 {/* Projects List */}
                 <ScrollView
@@ -306,6 +322,29 @@ const styles = StyleSheet.create({
         right: 16,
         top: '50%',
         marginTop: -10,
+    },
+    /** Filter chip */
+    filterChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        backgroundColor: '#F3F4F6',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        marginHorizontal: 16,
+        marginBottom: 4,
+        gap: 6,
+    },
+    filterDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    filterChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#374151',
     },
     /** Empty State */
     emptyState: {
