@@ -41,6 +41,10 @@ export default function ProjectDetailScreen() {
     const [selectedProduct, setSelectedProduct] = useState<any>(null);
     const [planQty, setPlanQty] = useState('1');
 
+    // Closeout state
+    const [showCloseoutModal, setShowCloseoutModal] = useState(false);
+    const [closeoutItems, setCloseoutItems] = useState<Record<string, { remainingQty: string; disposition: 'RETURN' | 'WASTE' }>>({});
+
     const { data: project, isLoading } = useQuery({
         queryKey: ['project', id],
         queryFn: () => directApi.projects.getById(id),
@@ -123,6 +127,25 @@ export default function ProjectDetailScreen() {
             Alert.alert('Geladen', 'De vrachtwagen is geladen. Voorraad is bijgewerkt.');
         },
         onError: (e: any) => Alert.alert('Fout', e?.message ?? 'Laden mislukt'),
+    });
+
+    const closeoutMutation = useMutation({
+        mutationFn: () => {
+            const items = Object.entries(closeoutItems).map(([allocationId, val]) => ({
+                allocationId,
+                remainingQuantity: parseInt(val.remainingQty || '0', 10),
+                disposition: val.disposition,
+            }));
+            return directApi.stockAllocations.closeout(id, items);
+        },
+        onSuccess: () => {
+            setShowCloseoutModal(false);
+            setCloseoutItems({});
+            refetchAllocations();
+            queryClient.invalidateQueries({ queryKey: ['project', id] });
+            Alert.alert('Afgerond', 'Het evenement is succesvol afgesloten. Resterende voorraad is verwerkt.');
+        },
+        onError: (e: any) => Alert.alert('Fout', e?.message ?? 'Afronden mislukt'),
     });
 
     const handleDeleteRevenue = (revenueId: string, description: string) => {
@@ -524,7 +547,7 @@ export default function ProjectDetailScreen() {
                     )}
 
                     {/* Vrachtwagen laden knop */}
-                    {plannedItems.length > 0 && (
+                    {plannedItems.length > 0 && !project.closeoutAt && (
                         <TouchableOpacity
                             style={{ marginTop: 12, backgroundColor: '#1976D2', borderRadius: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: loadMutation.isPending ? 0.7 : 1 }}
                             onPress={() => {
@@ -544,6 +567,36 @@ export default function ProjectDetailScreen() {
                                 {loadMutation.isPending ? 'Laden...' : `Laad vrachtwagen (${plannedItems.length})`}
                             </Text>
                         </TouchableOpacity>
+                    )}
+
+                    {/* Evenement afronden knop */}
+                    {!project.closeoutAt && loadedItems.length > 0 && (
+                        <TouchableOpacity
+                            style={{ marginTop: 12, backgroundColor: '#DC2626', borderRadius: 14, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                            onPress={() => {
+                                // Initialise closeout state met defaults
+                                const initial: Record<string, { remainingQty: string; disposition: 'RETURN' | 'WASTE' }> = {};
+                                loadedItems.forEach((a: any) => { initial[a.id] = { remainingQty: '0', disposition: 'RETURN' }; });
+                                setCloseoutItems(initial);
+                                setShowCloseoutModal(true);
+                            }}
+                        >
+                            <FeatherIcon name="flag" size={18} color="#fff" />
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Evenement afronden</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    {/* Afgesloten banner */}
+                    {project.closeoutAt && (
+                        <View style={{ marginTop: 12, backgroundColor: '#D1FAE5', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <FeatherIcon name="check-circle" size={20} color="#065F46" />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: '#065F46' }}>Evenement afgesloten</Text>
+                                <Text style={{ fontSize: 12, color: '#047857', marginTop: 2 }}>
+                                    {new Date(project.closeoutAt).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                </Text>
+                            </View>
+                        </View>
                     )}
                 </View>
 
@@ -818,6 +871,117 @@ export default function ProjectDetailScreen() {
                                 </ScrollView>
                             </>
                         )}
+                    </SafeAreaView>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Closeout Modal */}
+            <Modal
+                visible={showCloseoutModal}
+                animationType="slide"
+                presentationStyle="pageSheet"
+                onRequestClose={() => setShowCloseoutModal(false)}
+            >
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                    <SafeAreaView style={styles.modalContainer}>
+                        <View style={styles.modalHeader}>
+                            <TouchableOpacity onPress={() => setShowCloseoutModal(false)}>
+                                <Text style={styles.modalCancel}>Annuleren</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.modalTitle}>Evenement afronden</Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    Alert.alert(
+                                        'Evenement afronden',
+                                        'Dit kan niet ongedaan worden. Weet je zeker dat je wilt afronden?',
+                                        [
+                                            { text: 'Annuleren', style: 'cancel' },
+                                            { text: 'Afronden', style: 'destructive', onPress: () => closeoutMutation.mutate() },
+                                        ]
+                                    );
+                                }}
+                                disabled={closeoutMutation.isPending}
+                            >
+                                <Text style={[styles.modalSave, { color: '#DC2626' }, closeoutMutation.isPending && { opacity: 0.4 }]}>
+                                    {closeoutMutation.isPending ? 'Bezig...' : 'Afronden'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+                            {/* Warning */}
+                            <View style={{ backgroundColor: '#FEF2F2', borderRadius: 12, padding: 14, marginBottom: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                                <FeatherIcon name="alert-triangle" size={18} color="#DC2626" style={{ marginTop: 1 }} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#DC2626', marginBottom: 3 }}>Let op</Text>
+                                    <Text style={{ fontSize: 13, color: '#991B1B', lineHeight: 18 }}>
+                                        Voer de resterende hoeveelheid in per product. Resterende voorraad wordt teruggeplaatst in het magazijn. Dit kan niet ongedaan worden.
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Item list */}
+                            {allocations.filter((a: any) => a.status !== 'PLANNED').map((alloc: any) => {
+                                const item = closeoutItems[alloc.id] || { remainingQty: '0', disposition: 'RETURN' as const };
+                                return (
+                                    <View key={alloc.id} style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }}>
+                                        {/* Product name + loaded qty */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                                            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
+                                                <FeatherIcon name="package" size={16} color="#3B82F6" />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={{ fontSize: 15, fontWeight: '700', color: '#111827' }} numberOfLines={1}>
+                                                    {alloc.product?.name || 'Onbekend product'}
+                                                </Text>
+                                                <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                                                    {alloc.loadedQuantity ?? alloc.plannedQuantity} {alloc.product?.unit || 'stuks'} geladen
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Remaining qty input */}
+                                        <View style={{ marginBottom: 12 }}>
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 6 }}>
+                                                Resterende hoeveelheid
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#F9FAFB', borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 14, paddingVertical: 12, fontSize: 18, fontWeight: '700', color: '#111827', textAlign: 'center' }}
+                                                keyboardType="numeric"
+                                                value={item.remainingQty}
+                                                onChangeText={(val) =>
+                                                    setCloseoutItems((prev) => ({ ...prev, [alloc.id]: { ...item, remainingQty: val } }))
+                                                }
+                                                selectTextOnFocus
+                                            />
+                                        </View>
+
+                                        {/* Disposition toggle */}
+                                        <View>
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 }}>
+                                                Wat te doen met resterende voorraad?
+                                            </Text>
+                                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                                <TouchableOpacity
+                                                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 2, borderColor: item.disposition === 'RETURN' ? '#1976D2' : '#E5E7EB', backgroundColor: item.disposition === 'RETURN' ? '#EFF6FF' : '#fff', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                                                    onPress={() => setCloseoutItems((prev) => ({ ...prev, [alloc.id]: { ...item, disposition: 'RETURN' } }))}
+                                                >
+                                                    <FeatherIcon name="corner-up-left" size={15} color={item.disposition === 'RETURN' ? '#1976D2' : '#9CA3AF'} />
+                                                    <Text style={{ fontSize: 13, fontWeight: '700', color: item.disposition === 'RETURN' ? '#1976D2' : '#9CA3AF' }}>Retour</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 2, borderColor: item.disposition === 'WASTE' ? '#DC2626' : '#E5E7EB', backgroundColor: item.disposition === 'WASTE' ? '#FEF2F2' : '#fff', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                                                    onPress={() => setCloseoutItems((prev) => ({ ...prev, [alloc.id]: { ...item, disposition: 'WASTE' } }))}
+                                                >
+                                                    <FeatherIcon name="trash-2" size={15} color={item.disposition === 'WASTE' ? '#DC2626' : '#9CA3AF'} />
+                                                    <Text style={{ fontSize: 13, fontWeight: '700', color: item.disposition === 'WASTE' ? '#DC2626' : '#9CA3AF' }}>Afschrijven</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                        </ScrollView>
                     </SafeAreaView>
                 </KeyboardAvoidingView>
             </Modal>
