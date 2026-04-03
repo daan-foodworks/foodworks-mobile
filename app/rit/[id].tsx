@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     StyleSheet, SafeAreaView, View, Text, TouchableOpacity,
     ScrollView, RefreshControl, Alert, ActivityIndicator, Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import FeatherIcon from 'react-native-vector-icons/Feather';
+import RBSheet from 'react-native-raw-bottom-sheet';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { directApi } from '../../lib/directApi';
-import { format, addMinutes } from 'date-fns';
+import { format, addMinutes, isPast } from 'date-fns';
 import { nl } from 'date-fns/locale';
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
@@ -20,13 +21,18 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
     CANCELLED:   { label: 'Geannuleerd', color: '#B91C1C', bg: '#FEE2E2' },
 };
 
-/** Welke transitie knoppen tonen per status */
-const TRANSITION_BUTTONS: Record<string, { to: string; label: string; icon: string; primary?: boolean; danger?: boolean }[]> = {
-    DRAFT:       [{ to: 'CONFIRMED', label: 'Bevestigen', icon: 'check-circle', primary: true }],
-    CONFIRMED:   [{ to: 'IN_PROGRESS', label: 'Rit starten', icon: 'play', primary: true }],
-    IN_PROGRESS: [{ to: 'COMPLETED', label: 'Rit afronden', icon: 'check-square', primary: true }],
+const TRANSITION_BUTTONS: Record<string, { to: string; label: string; icon: string; primary?: boolean }[]> = {
+    DRAFT:       [{ to: 'CONFIRMED',   label: 'Bevestigen',   icon: 'check-circle', primary: true }],
+    CONFIRMED:   [{ to: 'IN_PROGRESS', label: 'Rit starten',  icon: 'play',         primary: true }],
+    IN_PROGRESS: [{ to: 'COMPLETED',   label: 'Rit afronden', icon: 'check-square', primary: true }],
     COMPLETED:   [],
     CANCELLED:   [],
+};
+
+const STATUS_LABELS: Record<string, string> = {
+    CONFIRMED:   'Bevestigd',
+    IN_PROGRESS: 'Onderweg',
+    COMPLETED:   'Afgerond',
 };
 
 function fmtTijd(d: string | null | undefined) {
@@ -34,15 +40,31 @@ function fmtTijd(d: string | null | undefined) {
     return format(new Date(d), 'HH:mm');
 }
 
+// ─── Multi-app navigatiepicker ──────────────────────────────────────────────────
+
+function openNavigation(location: string) {
+    const enc = encodeURIComponent(location);
+    Alert.alert('Navigeren naar', location, [
+        { text: 'Apple Kaarten', onPress: () => Linking.openURL(`maps:?q=${enc}`) },
+        { text: 'Google Maps',   onPress: () => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${enc}`) },
+        { text: 'Waze',          onPress: () => Linking.openURL(`https://waze.com/ul?q=${enc}`) },
+        { text: 'Annuleren', style: 'cancel' },
+    ]);
+}
+
 // ─── Stop regel ────────────────────────────────────────────────────────────────
 
 function StopRegel({
     icon, label, sublabel, time, overrideTime, dwellMinutes, dwellNote, location,
+    responsible, isCompleted, isNext, stepNumber,
 }: {
     icon: string; label: string; sublabel?: string;
     time?: string | null; overrideTime?: string | null;
     dwellMinutes?: number | null; dwellNote?: string | null;
     location?: string | null;
+    responsible?: { name: string; phone?: string | null } | null;
+    isCompleted?: boolean; isNext?: boolean;
+    stepNumber?: number;
 }) {
     const effectiveTime = overrideTime || time;
     const hasOverride = !!overrideTime && overrideTime !== time;
@@ -51,10 +73,13 @@ function StopRegel({
         : null;
 
     return (
-        <View style={stopStyles.row}>
-            {/* Tijdkolom */}
+        <View style={[stopStyles.row, isNext && stopStyles.rowNext, isCompleted && stopStyles.rowCompleted]}>
+            {/* Stapnummer + tijdkolom */}
             <View style={stopStyles.timeCol}>
-                <Text style={[stopStyles.time, hasOverride && stopStyles.timeOverride]}>
+                {stepNumber != null && (
+                    <Text style={[stopStyles.stepNumber, isCompleted && stopStyles.stepNumberDim]}>{stepNumber}.</Text>
+                )}
+                <Text style={[stopStyles.time, hasOverride && stopStyles.timeOverride, isCompleted && stopStyles.timeDim]}>
                     {effectiveTime ? format(new Date(effectiveTime), 'HH:mm') : '—'}
                 </Text>
                 {hasOverride && time && (
@@ -64,25 +89,45 @@ function StopRegel({
 
             {/* Icoon connector */}
             <View style={stopStyles.connector}>
-                <View style={stopStyles.connectorDot}>
-                    <FeatherIcon name={icon} size={14} color="#fff" />
+                <View style={[stopStyles.connectorDot, isCompleted && stopStyles.connectorDotDim, isNext && stopStyles.connectorDotNext]}>
+                    <FeatherIcon
+                        name={isCompleted ? 'check' : icon}
+                        size={14}
+                        color="#fff"
+                    />
                 </View>
             </View>
 
             {/* Info */}
             <View style={stopStyles.info}>
-                <Text style={stopStyles.label}>{label}</Text>
-                {sublabel ? <Text style={stopStyles.sublabel}>{sublabel}</Text> : null}
+                <Text style={[stopStyles.label, isCompleted && stopStyles.labelDim]}>{label}</Text>
+                {sublabel ? <Text style={[stopStyles.sublabel, isCompleted && stopStyles.labelDim]}>{sublabel}</Text> : null}
+
+                {/* Responsible contact */}
+                {responsible?.name && (
+                    <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}
+                        onPress={responsible.phone ? () => Linking.openURL(`tel:${responsible.phone}`) : undefined}
+                        activeOpacity={responsible.phone ? 0.7 : 1}
+                    >
+                        <FeatherIcon name="user" size={11} color={responsible.phone ? '#1D4ED8' : '#9CA3AF'} />
+                        <Text style={[stopStyles.sublabel, responsible.phone && { color: '#1D4ED8', textDecorationLine: 'underline' }]}>
+                            {responsible.name}{responsible.phone ? ` · ${responsible.phone}` : ''}
+                        </Text>
+                    </TouchableOpacity>
+                )}
+
                 {location ? (
                     <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}
-                        onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(location)}`)}
+                        onPress={() => openNavigation(location)}
                         activeOpacity={0.7}
                     >
                         <FeatherIcon name="map-pin" size={11} color="#1D4ED8" />
                         <Text style={[stopStyles.sublabel, { color: '#1D4ED8', textDecorationLine: 'underline' }]}>{location}</Text>
                     </TouchableOpacity>
                 ) : null}
+
                 {dwellMinutes != null && dwellMinutes > 0 ? (
                     <View style={stopStyles.dwellChip}>
                         <FeatherIcon name="clock" size={11} color="#D97706" />
@@ -99,17 +144,28 @@ function StopRegel({
 
 const stopStyles = StyleSheet.create({
     row: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
-    timeCol: { width: 48, alignItems: 'flex-end', marginRight: 12, paddingTop: 2 },
+    rowNext: {
+        backgroundColor: '#EFF6FF', borderRadius: 12, padding: 10, marginHorizontal: -10,
+        borderLeftWidth: 3, borderLeftColor: '#1976D2',
+    },
+    rowCompleted: { opacity: 0.45 },
+    timeCol: { width: 52, alignItems: 'flex-end', marginRight: 12, paddingTop: 2 },
+    stepNumber: { fontSize: 10, fontWeight: '700', color: '#9CA3AF', marginBottom: 1 },
+    stepNumberDim: { color: '#D1D5DB' },
     time: { fontSize: 14, fontWeight: '700', color: '#111827' },
     timeOverride: { color: '#1D4ED8' },
+    timeDim: { color: '#9CA3AF' },
     timeOriginal: { fontSize: 11, color: '#9CA3AF', textDecorationLine: 'line-through' },
     connector: { alignItems: 'center', marginRight: 12 },
     connectorDot: {
         width: 28, height: 28, borderRadius: 14,
         backgroundColor: '#1976D2', alignItems: 'center', justifyContent: 'center',
     },
+    connectorDotDim: { backgroundColor: '#9CA3AF' },
+    connectorDotNext: { backgroundColor: '#1976D2', shadowColor: '#1976D2', shadowOpacity: 0.4, shadowRadius: 6, elevation: 3 },
     info: { flex: 1 },
     label: { fontSize: 14, fontWeight: '600', color: '#111827' },
+    labelDim: { color: '#9CA3AF' },
     sublabel: { fontSize: 12, color: '#6B7280', marginTop: 2 },
     dwellChip: {
         flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6,
@@ -119,12 +175,67 @@ const stopStyles = StyleSheet.create({
     dwellText: { fontSize: 12, color: '#D97706', fontWeight: '600' },
 });
 
+// ─── Volgende stop kaart ────────────────────────────────────────────────────────
+
+function NextStopCard({ stop }: { stop: { label: string; time?: string | null; location?: string | null } }) {
+    return (
+        <View style={nextStyles.card}>
+            <View style={nextStyles.left}>
+                <Text style={nextStyles.heading}>Volgende stop</Text>
+                <Text style={nextStyles.label} numberOfLines={1}>{stop.label}</Text>
+                {stop.location && (
+                    <Text style={nextStyles.location} numberOfLines={1}>{stop.location}</Text>
+                )}
+            </View>
+            <View style={nextStyles.right}>
+                {stop.time && (
+                    <Text style={nextStyles.time}>{format(new Date(stop.time), 'HH:mm')}</Text>
+                )}
+                {stop.location && (
+                    <TouchableOpacity
+                        style={nextStyles.navBtn}
+                        onPress={() => openNavigation(stop.location!)}
+                        activeOpacity={0.8}
+                    >
+                        <FeatherIcon name="navigation" size={14} color="#fff" />
+                        <Text style={nextStyles.navBtnText}>Navigeer</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        </View>
+    );
+}
+
+const nextStyles = StyleSheet.create({
+    card: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#1976D2', borderRadius: 14,
+        marginHorizontal: 16, marginTop: 12, padding: 14,
+        shadowColor: '#1976D2', shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+    },
+    left: { flex: 1, marginRight: 12 },
+    heading: { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 },
+    label: { fontSize: 15, fontWeight: '700', color: '#fff' },
+    location: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+    right: { alignItems: 'flex-end', gap: 6 },
+    time: { fontSize: 18, fontWeight: '800', color: '#fff' },
+    navBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8,
+        paddingHorizontal: 10, paddingVertical: 6,
+    },
+    navBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+});
+
 // ─── Scherm ────────────────────────────────────────────────────────────────────
 
 export default function RitDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const qc = useQueryClient();
+
+    const statusSheetRef = useRef<any>();
+    const [pendingTransition, setPendingTransition] = useState<{ to: string; label: string } | null>(null);
 
     const { data: rit, isLoading, refetch } = useQuery({
         queryKey: ['rit', id],
@@ -138,20 +249,17 @@ export default function RitDetailScreen() {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['rit', id] });
             qc.invalidateQueries({ queryKey: ['mijn-ritten'] });
+            statusSheetRef.current?.close();
         },
-        onError: (e: any) => Alert.alert('Fout', e?.message ?? 'Statuswijziging mislukt'),
+        onError: (e: any) => {
+            statusSheetRef.current?.close();
+            Alert.alert('Fout', e?.message ?? 'Statuswijziging mislukt');
+        },
     });
 
     const handleTransition = (to: string, label: string) => {
-        Alert.alert(
-            label,
-            `Weet je zeker dat je de rit wilt ${label.toLowerCase()}?`,
-            [
-                { text: 'Annuleren', style: 'cancel' },
-                { text: label, style: to === 'COMPLETED' ? 'destructive' : 'default',
-                  onPress: () => statusMutation.mutate({ status: to }) },
-            ]
-        );
+        setPendingTransition({ to, label });
+        statusSheetRef.current?.open();
     };
 
     if (isLoading || !rit) {
@@ -164,8 +272,9 @@ export default function RitDetailScreen() {
 
     const sc = STATUS_CONFIG[rit.status] ?? STATUS_CONFIG.DRAFT;
     const transitions = TRANSITION_BUTTONS[rit.status] ?? [];
+    const isInProgress = rit.status === 'IN_PROGRESS';
 
-    // Planbord stops opbouwen
+    // ─── Planbord stops opbouwen ────────────────────────────────────────────────
     const stops: any[] = [];
     if (rit.departureAt) {
         stops.push({ type: 'depot', icon: 'truck', label: 'Vertrek depot', time: rit.departureAt, location: rit.departureLocation });
@@ -180,6 +289,7 @@ export default function RitDetailScreen() {
             dwellMinutes: u.overrideStopMinutes,
             dwellNote: u.overrideStopNote,
             location: u.project?.eventLocation,
+            responsible: u.departureResponsible ?? null,
         });
     });
     (rit.deliveries ?? []).forEach((d: any) => {
@@ -188,6 +298,7 @@ export default function RitDetailScreen() {
             label: d.description ?? d.supplierName ?? 'Levering',
             sublabel: d.deliveryType === 'EXTERNAL' ? 'Externe levering' : 'Intern',
             time: d.scheduledAt,
+            location: d.address ?? null,
         });
     });
     (rit.returnUnits ?? []).forEach((u: any) => {
@@ -200,6 +311,7 @@ export default function RitDetailScreen() {
             dwellMinutes: u.overrideReturnStopMinutes,
             dwellNote: u.overrideReturnStopNote,
             location: u.project?.eventLocation,
+            responsible: u.arrivalResponsible ?? null,
         });
     });
     if (rit.returnAt) {
@@ -211,6 +323,16 @@ export default function RitDetailScreen() {
         const bt = (b.overrideTime || b.time) ? new Date(b.overrideTime || b.time).getTime() : Infinity;
         return at - bt;
     });
+
+    // ─── Volgende stop bepalen (voor IN_PROGRESS) ───────────────────────────────
+    const now = new Date();
+    const nextStopIndex = isInProgress
+        ? stops.findIndex((s) => {
+            const t = s.overrideTime || s.time;
+            return t && !isPast(new Date(t));
+        })
+        : -1;
+    const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : (isInProgress && stops.length > 0 ? stops[stops.length - 1] : null);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -269,6 +391,11 @@ export default function RitDetailScreen() {
                     </TouchableOpacity>
                 </View>
 
+                {/* Volgende stop kaart (alleen IN_PROGRESS) */}
+                {isInProgress && nextStop && (
+                    <NextStopCard stop={nextStop} />
+                )}
+
                 {/* Info sectie */}
                 <View style={styles.infoCard}>
                     {rit.vehicle && (
@@ -286,20 +413,35 @@ export default function RitDetailScreen() {
                     {rit.driver && (
                         <View style={styles.infoRow}>
                             <FeatherIcon name="user" size={15} color="#6B7280" />
-                            <View style={{ marginLeft: 10 }}>
+                            <View style={{ marginLeft: 10, flex: 1 }}>
                                 <Text style={styles.infoLabel}>Chauffeur</Text>
                                 <Text style={styles.infoValue}>{rit.driver.name}</Text>
+                                {rit.driver.phone && (
+                                    <TouchableOpacity
+                                        onPress={() => Linking.openURL(`tel:${rit.driver.phone}`)}
+                                        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <FeatherIcon name="phone" size={13} color="#1D4ED8" />
+                                        <Text style={[styles.infoValue, { fontSize: 13, color: '#1D4ED8', textDecorationLine: 'underline' }]}>
+                                            {rit.driver.phone}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </View>
                     )}
                     {rit.estimatedArrivalAt && (
                         <View style={styles.infoRow}>
                             <FeatherIcon name="navigation" size={15} color="#1D4ED8" />
-                            <View style={{ marginLeft: 10 }}>
+                            <View style={{ marginLeft: 10, flex: 1 }}>
                                 <Text style={styles.infoLabel}>ETA aankomst</Text>
                                 <Text style={[styles.infoValue, { color: '#1D4ED8' }]}>
                                     {format(new Date(rit.estimatedArrivalAt), 'HH:mm')}
                                 </Text>
+                                {rit.etaNotes && (
+                                    <Text style={styles.etaNotes}>{rit.etaNotes}</Text>
+                                )}
                             </View>
                         </View>
                     )}
@@ -320,22 +462,67 @@ export default function RitDetailScreen() {
                     {stops.length === 0 ? (
                         <Text style={styles.emptyText}>Geen stops gepland</Text>
                     ) : (
-                        stops.map((s, i) => (
-                            <StopRegel
-                                key={i}
-                                icon={s.icon}
-                                label={s.label}
-                                sublabel={s.sublabel}
-                                time={s.time}
-                                overrideTime={s.overrideTime}
-                                dwellMinutes={s.dwellMinutes}
-                                dwellNote={s.dwellNote}
-                                location={s.location}
-                            />
-                        ))
+                        stops.map((s, i) => {
+                            const effectiveTime = s.overrideTime || s.time;
+                            const isCompleted = isInProgress && effectiveTime && isPast(new Date(effectiveTime));
+                            const isNext = isInProgress && i === nextStopIndex;
+                            return (
+                                <StopRegel
+                                    key={i}
+                                    icon={s.icon}
+                                    label={s.label}
+                                    sublabel={s.sublabel}
+                                    time={s.time}
+                                    overrideTime={s.overrideTime}
+                                    dwellMinutes={s.dwellMinutes}
+                                    dwellNote={s.dwellNote}
+                                    location={s.location}
+                                    responsible={s.responsible}
+                                    isCompleted={!!isCompleted}
+                                    isNext={isNext}
+                                    stepNumber={i + 1}
+                                />
+                            );
+                        })
                     )}
                 </View>
             </ScrollView>
+
+            {/* Status overgang bottom sheet */}
+            <RBSheet
+                ref={statusSheetRef}
+                customStyles={{ container: { borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 24 } }}
+                height={220}
+                openDuration={250}
+                closeOnDragDown
+            >
+                {pendingTransition && (
+                    <>
+                        <Text style={styles.sheetTitle}>{pendingTransition.label}</Text>
+                        <Text style={styles.sheetSubtitle}>
+                            Status wordt gewijzigd naar "{STATUS_LABELS[pendingTransition.to] ?? pendingTransition.to}"
+                        </Text>
+                        <TouchableOpacity
+                            style={[styles.actieBtn, styles.actieBtnPrimary, { marginTop: 20 }]}
+                            onPress={() => statusMutation.mutate({ status: pendingTransition.to })}
+                            disabled={statusMutation.isPending}
+                            activeOpacity={0.8}
+                        >
+                            {statusMutation.isPending
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={[styles.actieBtnText, { color: '#fff' }]}>Bevestigen</Text>
+                            }
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.actieBtn, { marginTop: 10 }]}
+                            onPress={() => statusSheetRef.current?.close()}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.actieBtnText}>Annuleren</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+            </RBSheet>
         </SafeAreaView>
     );
 }
@@ -352,9 +539,7 @@ const styles = StyleSheet.create({
     statusChip: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
     statusChipText: { fontSize: 12, fontWeight: '700' },
 
-    actieBar: {
-        flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 0,
-    },
+    actieBar: { flexDirection: 'row', gap: 10, padding: 16, paddingBottom: 0 },
     actieBtn: {
         flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
         paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#1976D2',
@@ -371,6 +556,7 @@ const styles = StyleSheet.create({
     infoRow: { flexDirection: 'row', alignItems: 'flex-start' },
     infoLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
     infoValue: { fontSize: 15, fontWeight: '600', color: '#111827', marginTop: 2 },
+    etaNotes: { fontSize: 12, color: '#6B7280', fontStyle: 'italic', marginTop: 3 },
 
     section: { paddingHorizontal: 16, paddingTop: 4 },
     sectionTitle: {
@@ -378,4 +564,7 @@ const styles = StyleSheet.create({
         letterSpacing: 1, marginBottom: 16,
     },
     emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center', paddingVertical: 20 },
+
+    sheetTitle: { fontSize: 20, fontWeight: '700', color: '#111827', textAlign: 'center' },
+    sheetSubtitle: { fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: 6 },
 });
