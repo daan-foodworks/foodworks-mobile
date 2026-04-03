@@ -54,15 +54,35 @@ function openNavigation(location: string) {
 
 // ─── Stop regel ────────────────────────────────────────────────────────────────
 
+function ContactRij({ icon, name, phone }: { icon: string; name: string; phone?: string | null }) {
+    return (
+        <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}
+            onPress={phone ? () => Linking.openURL(`tel:${phone}`) : undefined}
+            activeOpacity={phone ? 0.7 : 1}
+        >
+            <FeatherIcon name={icon} size={11} color={phone ? '#1D4ED8' : '#9CA3AF'} />
+            <Text style={[{ fontSize: 12, color: '#6B7280' }, phone && { color: '#1D4ED8', textDecorationLine: 'underline' }]}>
+                {name}{phone ? ` · ${phone}` : ''}
+            </Text>
+        </TouchableOpacity>
+    );
+}
+
 function StopRegel({
     icon, label, sublabel, time, overrideTime, dwellMinutes, dwellNote, location,
-    responsible, isCompleted, isNext, stepNumber,
+    responsible, projectInfo, isCompleted, isNext, stepNumber,
 }: {
     icon: string; label: string; sublabel?: string;
     time?: string | null; overrideTime?: string | null;
     dwellMinutes?: number | null; dwellNote?: string | null;
     location?: string | null;
     responsible?: { name: string; phone?: string | null } | null;
+    projectInfo?: {
+        eventStartDate?: string | null; eventEndDate?: string | null;
+        projectManager?: { name: string; phone?: string | null } | null;
+        shiftleaders?: { user: { name: string; phone?: string | null } }[];
+    } | null;
     isCompleted?: boolean; isNext?: boolean;
     stepNumber?: number;
 }) {
@@ -105,16 +125,7 @@ function StopRegel({
 
                 {/* Responsible contact */}
                 {responsible?.name && (
-                    <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}
-                        onPress={responsible.phone ? () => Linking.openURL(`tel:${responsible.phone}`) : undefined}
-                        activeOpacity={responsible.phone ? 0.7 : 1}
-                    >
-                        <FeatherIcon name="user" size={11} color={responsible.phone ? '#1D4ED8' : '#9CA3AF'} />
-                        <Text style={[stopStyles.sublabel, responsible.phone && { color: '#1D4ED8', textDecorationLine: 'underline' }]}>
-                            {responsible.name}{responsible.phone ? ` · ${responsible.phone}` : ''}
-                        </Text>
-                    </TouchableOpacity>
+                    <ContactRij icon="user" name={`Verantw.: ${responsible.name}`} phone={responsible.phone} />
                 )}
 
                 {location ? (
@@ -127,6 +138,31 @@ function StopRegel({
                         <Text style={[stopStyles.sublabel, { color: '#1D4ED8', textDecorationLine: 'underline' }]}>{location}</Text>
                     </TouchableOpacity>
                 ) : null}
+
+                {/* Project info: event tijden + contacten */}
+                {projectInfo && (
+                    <View style={stopStyles.projectInfo}>
+                        {(projectInfo.eventStartDate || projectInfo.eventEndDate) && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                                <FeatherIcon name="calendar" size={11} color="#6B7280" />
+                                <Text style={{ fontSize: 12, color: '#6B7280' }}>
+                                    {projectInfo.eventStartDate
+                                        ? format(new Date(projectInfo.eventStartDate), 'EEE d MMM · HH:mm', { locale: nl })
+                                        : ''}
+                                    {projectInfo.eventEndDate
+                                        ? ` – ${format(new Date(projectInfo.eventEndDate), 'HH:mm')}`
+                                        : ''}
+                                </Text>
+                            </View>
+                        )}
+                        {projectInfo.projectManager?.name && (
+                            <ContactRij icon="briefcase" name={`PM: ${projectInfo.projectManager.name}`} phone={projectInfo.projectManager.phone} />
+                        )}
+                        {(projectInfo.shiftleaders ?? []).map((sl, idx) => (
+                            <ContactRij key={idx} icon="users" name={`Shiftleader: ${sl.user.name}`} phone={sl.user.phone} />
+                        ))}
+                    </View>
+                )}
 
                 {dwellMinutes != null && dwellMinutes > 0 ? (
                     <View style={stopStyles.dwellChip}>
@@ -167,6 +203,10 @@ const stopStyles = StyleSheet.create({
     label: { fontSize: 14, fontWeight: '600', color: '#111827' },
     labelDim: { color: '#9CA3AF' },
     sublabel: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+    projectInfo: {
+        marginTop: 6, paddingTop: 6,
+        borderTopWidth: 1, borderTopColor: '#F3F4F6',
+    },
     dwellChip: {
         flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6,
         backgroundColor: '#FEF3C7', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
@@ -177,7 +217,10 @@ const stopStyles = StyleSheet.create({
 
 // ─── Volgende stop kaart ────────────────────────────────────────────────────────
 
-function NextStopCard({ stop }: { stop: { label: string; time?: string | null; location?: string | null } }) {
+function NextStopCard({ stop, onDone }: {
+    stop: { label: string; time?: string | null; location?: string | null };
+    onDone: () => void;
+}) {
     return (
         <View style={nextStyles.card}>
             <View style={nextStyles.left}>
@@ -186,20 +229,30 @@ function NextStopCard({ stop }: { stop: { label: string; time?: string | null; l
                 {stop.location && (
                     <Text style={nextStyles.location} numberOfLines={1}>{stop.location}</Text>
                 )}
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                    {stop.location && (
+                        <TouchableOpacity
+                            style={nextStyles.navBtn}
+                            onPress={() => openNavigation(stop.location!)}
+                            activeOpacity={0.8}
+                        >
+                            <FeatherIcon name="navigation" size={13} color="#fff" />
+                            <Text style={nextStyles.navBtnText}>Navigeer</Text>
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                        style={nextStyles.doneBtn}
+                        onPress={onDone}
+                        activeOpacity={0.8}
+                    >
+                        <FeatherIcon name="check" size={13} color="#1976D2" />
+                        <Text style={nextStyles.doneBtnText}>Klaar</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
             <View style={nextStyles.right}>
                 {stop.time && (
                     <Text style={nextStyles.time}>{format(new Date(stop.time), 'HH:mm')}</Text>
-                )}
-                {stop.location && (
-                    <TouchableOpacity
-                        style={nextStyles.navBtn}
-                        onPress={() => openNavigation(stop.location!)}
-                        activeOpacity={0.8}
-                    >
-                        <FeatherIcon name="navigation" size={14} color="#fff" />
-                        <Text style={nextStyles.navBtnText}>Navigeer</Text>
-                    </TouchableOpacity>
                 )}
             </View>
         </View>
@@ -225,6 +278,12 @@ const nextStyles = StyleSheet.create({
         paddingHorizontal: 10, paddingVertical: 6,
     },
     navBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    doneBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        backgroundColor: '#fff', borderRadius: 8,
+        paddingHorizontal: 10, paddingVertical: 6,
+    },
+    doneBtnText: { fontSize: 13, fontWeight: '700', color: '#1976D2' },
 });
 
 // ─── Scherm ────────────────────────────────────────────────────────────────────
@@ -236,6 +295,7 @@ export default function RitDetailScreen() {
 
     const statusSheetRef = useRef<any>();
     const [pendingTransition, setPendingTransition] = useState<{ to: string; label: string } | null>(null);
+    const [completedStopIndices, setCompletedStopIndices] = useState<number[]>([]);
 
     const { data: rit, isLoading, refetch } = useQuery({
         queryKey: ['rit', id],
@@ -290,6 +350,12 @@ export default function RitDetailScreen() {
             dwellNote: u.overrideStopNote,
             location: u.project?.eventLocation,
             responsible: u.departureResponsible ?? null,
+            projectInfo: u.project ? {
+                eventStartDate: u.project.eventStartDate,
+                eventEndDate: u.project.eventEndDate,
+                projectManager: u.project.projectManager,
+                shiftleaders: u.project.shiftleaders,
+            } : null,
         });
     });
     (rit.deliveries ?? []).forEach((d: any) => {
@@ -312,6 +378,12 @@ export default function RitDetailScreen() {
             dwellNote: u.overrideReturnStopNote,
             location: u.project?.eventLocation,
             responsible: u.arrivalResponsible ?? null,
+            projectInfo: u.project ? {
+                eventStartDate: u.project.eventStartDate,
+                eventEndDate: u.project.eventEndDate,
+                projectManager: u.project.projectManager,
+                shiftleaders: u.project.shiftleaders,
+            } : null,
         });
     });
     if (rit.returnAt) {
@@ -325,15 +397,23 @@ export default function RitDetailScreen() {
     });
 
     // ─── Volgende stop bepalen (voor IN_PROGRESS) ───────────────────────────────
-    const now = new Date();
+    const isStopDone = (i: number, s: any) => {
+        if (completedStopIndices.includes(i)) return true;
+        const t = s.overrideTime || s.time;
+        return t ? isPast(new Date(t)) : false;
+    };
+
     const nextStopIndex = isInProgress
-        ? stops.findIndex((s) => {
-            const t = s.overrideTime || s.time;
-            return t && !isPast(new Date(t));
-        })
+        ? stops.findIndex((s, i) => !isStopDone(i, s))
         : -1;
-    // Fallback: toon eerste stop als alle stops voorbij zijn (niet de laatste)
+
     const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : (isInProgress && stops.length > 0 ? stops[0] : null);
+
+    const handleStopDone = () => {
+        if (nextStopIndex >= 0) {
+            setCompletedStopIndices(prev => [...prev, nextStopIndex]);
+        }
+    };
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -394,7 +474,7 @@ export default function RitDetailScreen() {
 
                 {/* Volgende stop kaart (alleen IN_PROGRESS) */}
                 {isInProgress && nextStop && (
-                    <NextStopCard stop={nextStop} />
+                    <NextStopCard stop={nextStop} onDone={handleStopDone} />
                 )}
 
                 {/* Info sectie */}
@@ -465,7 +545,7 @@ export default function RitDetailScreen() {
                     ) : (
                         stops.map((s, i) => {
                             const effectiveTime = s.overrideTime || s.time;
-                            const isCompleted = isInProgress && effectiveTime && isPast(new Date(effectiveTime));
+                            const isCompleted = isInProgress && isStopDone(i, s);
                             const isNext = isInProgress && i === nextStopIndex;
                             return (
                                 <StopRegel
@@ -479,6 +559,7 @@ export default function RitDetailScreen() {
                                     dwellNote={s.dwellNote}
                                     location={s.location}
                                     responsible={s.responsible}
+                                    projectInfo={s.projectInfo ?? null}
                                     isCompleted={!!isCompleted}
                                     isNext={isNext}
                                     stepNumber={i + 1}
