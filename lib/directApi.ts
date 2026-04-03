@@ -5,7 +5,7 @@ import {
     Notification,
 } from '@foodworks/shared-types';
 
-const API_BASE_URL = 'http://192.168.2.34:3000/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://foodworks-backend-production.up.railway.app/api';
 
 async function getAuthToken(): Promise<string | null> {
     const SecureStore = await import('expo-secure-store');
@@ -207,8 +207,29 @@ export const directApi = {
     },
 
     products: {
+        async getAll(): Promise<any[]> {
+            return fetchWithAuth('/products');
+        },
         async getByBarcode(barcode: string): Promise<any> {
             return fetchWithAuth(`/products/barcode/${encodeURIComponent(barcode)}`);
+        },
+    },
+
+    stockAllocations: {
+        async getAllocations(projectId: string): Promise<any> {
+            return fetchWithAuth(`/projects/${projectId}/stock/allocations`);
+        },
+        async plan(projectId: string, items: { productId: string; plannedQuantity: number }[]): Promise<any> {
+            return fetchWithAuth(`/projects/${projectId}/stock/plan`, {
+                method: 'POST',
+                body: JSON.stringify({ items }),
+            });
+        },
+        async load(projectId: string, items: { productId: string; quantity: number }[], userId?: string): Promise<any> {
+            return fetchWithAuth(`/projects/${projectId}/stock/load`, {
+                method: 'POST',
+                body: JSON.stringify({ items, userId }),
+            });
         },
     },
 
