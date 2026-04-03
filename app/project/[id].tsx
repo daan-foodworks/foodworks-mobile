@@ -12,6 +12,7 @@ import {
     Platform,
     Alert,
     Linking,
+    ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import FeatherIcon from 'react-native-vector-icons/Feather';
@@ -87,7 +88,7 @@ export default function ProjectDetailScreen() {
     });
     const allocations: any[] = allocationsData?.allocations || [];
 
-    const { data: productsData } = useQuery({
+    const { data: productsData, isLoading: productsLoading } = useQuery({
         queryKey: ['products-all'],
         queryFn: () => directApi.products.getAll(),
         enabled: showAddItemModal,
@@ -779,7 +780,12 @@ export default function ProjectDetailScreen() {
                                     </View>
                                 </View>
                                 <ScrollView keyboardShouldPersistTaps="handled">
-                                    {allProducts
+                                    {productsLoading ? (
+                                        <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                                            <ActivityIndicator size="large" color="#1976D2" />
+                                        </View>
+                                    ) : null}
+                                    {!productsLoading && allProducts
                                         .filter((p: any) => !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase()))
                                         .map((p: any) => (
                                             <TouchableOpacity
@@ -803,6 +809,12 @@ export default function ProjectDetailScreen() {
                                             </TouchableOpacity>
                                         ))
                                     }
+                                    {!productsLoading && allProducts.filter((p: any) => !productSearch || p.name?.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                                        <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                                            <FeatherIcon name="package" size={32} color="#D1D5DB" />
+                                            <Text style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8 }}>Geen producten gevonden</Text>
+                                        </View>
+                                    )}
                                 </ScrollView>
                             </>
                         )}

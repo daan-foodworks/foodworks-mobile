@@ -208,7 +208,8 @@ export const directApi = {
 
     products: {
         async getAll(): Promise<any[]> {
-            return fetchWithAuth('/products');
+            const data = await fetchWithAuth('/products');
+            return Array.isArray(data) ? data : (data?.products ?? []);
         },
         async getByBarcode(barcode: string): Promise<any> {
             return fetchWithAuth(`/products/barcode/${encodeURIComponent(barcode)}`);
