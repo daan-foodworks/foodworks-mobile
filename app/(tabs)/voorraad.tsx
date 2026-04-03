@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
     StyleSheet, SafeAreaView, View, Text, TouchableOpacity,
     ScrollView, RefreshControl, FlatList, Modal, TextInput,
     ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import RBSheet from 'react-native-raw-bottom-sheet';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { BarcodeScanner } from '../../components/BarcodeScanner';
 import FeatherIcon from 'react-native-vector-icons/Feather';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { directApi } from '../../lib/directApi';
@@ -49,16 +50,14 @@ export default function VoorraadScreen() {
 
     const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
     const [showScanner, setShowScanner] = useState(false);
+    const [scanProcessing, setScanProcessing] = useState(false);
     const [scannedItem, setScannedItem] = useState<StockItem | null>(null);
     const [countModal, setCountModal] = useState(false);
-    const [adjustModal, setAdjustModal] = useState(false);
     const [adjustTarget, setAdjustTarget] = useState<StockItem | null>(null);
     const [countInput, setCountInput] = useState('');
     const [adjustInput, setAdjustInput] = useState('');
     const [adjustReason, setAdjustReason] = useState('');
-    const [scanProcessing, setScanProcessing] = useState(false);
-
-    const [permission, requestPermission] = useCameraPermissions();
+    const adjustSheet = React.useRef<any>();
 
     // Stock query
     const { data: stockData, isLoading: stockLoading, refetch: refetchStock } = useQuery({
@@ -94,7 +93,7 @@ export default function VoorraadScreen() {
             directApi.stock.adjust(itemId, adjustment, reason),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['stock'] });
-            setAdjustModal(false);
+            adjustSheet.current?.close();
             setAdjustTarget(null);
             setAdjustInput('');
             setAdjustReason('');
@@ -104,18 +103,17 @@ export default function VoorraadScreen() {
 
     // ─── Barcode scan handler ────────────────────────────────────────────────
 
-    async function handleBarcodeScanned({ data }: { data: string }) {
+    async function handleBarcodeScanned(data: string) {
         if (scanProcessing) return;
         setScanProcessing(true);
         try {
             const result = await directApi.products.getByBarcode(data);
             const product = (result as any).product;
             if (!product) {
+                setShowScanner(false);
                 Alert.alert('Niet gevonden', `Geen product gevonden voor barcode: ${data}`);
-                setScanProcessing(false);
                 return;
             }
-            // Find stock item in current list matching this product
             const match = stockList.find(s => s.productId === product.id);
             if (match) {
                 setScannedItem(match);
@@ -123,27 +121,15 @@ export default function VoorraadScreen() {
                 setShowScanner(false);
                 setCountModal(true);
             } else {
+                setShowScanner(false);
                 Alert.alert('Niet in voorraad', `${product.name} is niet gevonden in de geselecteerde locatie.`);
             }
         } catch {
+            setShowScanner(false);
             Alert.alert('Niet gevonden', `Geen product gevonden voor barcode: ${data}`);
         } finally {
             setScanProcessing(false);
         }
-    }
-
-    // ─── Open scanner ────────────────────────────────────────────────────────
-
-    async function openScanner() {
-        if (!permission?.granted) {
-            const result = await requestPermission();
-            if (!result.granted) {
-                Alert.alert('Geen toegang', 'Camera-toegang is vereist voor de barcode scanner.');
-                return;
-            }
-        }
-        setScanProcessing(false);
-        setShowScanner(true);
     }
 
     // ─── Long press adjust ───────────────────────────────────────────────────
@@ -152,7 +138,7 @@ export default function VoorraadScreen() {
         setAdjustTarget(item);
         setAdjustInput('');
         setAdjustReason('');
-        setAdjustModal(true);
+        adjustSheet.current?.open();
     }
 
     // ─── Render stock row ────────────────────────────────────────────────────
@@ -202,7 +188,7 @@ export default function VoorraadScreen() {
                     </TouchableOpacity>
                     <Text style={styles.title}>Voorraad</Text>
                 </View>
-                <TouchableOpacity style={styles.scanBtn} onPress={openScanner}>
+                <TouchableOpacity style={styles.scanBtn} onPress={() => setShowScanner(true)}>
                     <FeatherIcon name="camera" size={18} color="#fff" />
                     <Text style={styles.scanBtnText}>Scan</Text>
                 </TouchableOpacity>
@@ -260,29 +246,13 @@ export default function VoorraadScreen() {
                 />
             )}
 
-            {/* Barcode scanner modal */}
-            <Modal visible={showScanner} animationType="slide" onRequestClose={() => setShowScanner(false)}>
-                <View style={{ flex: 1, backgroundColor: '#000' }}>
-                    <CameraView
-                        style={{ flex: 1 }}
-                        facing="back"
-                        onBarcodeScanned={handleBarcodeScanned}
-                        barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'qr', 'code128', 'code39', 'upc_a', 'upc_e'] }}
-                    />
-                    {/* Overlay */}
-                    <View style={styles.scanOverlay}>
-                        <View style={styles.scanFrame} />
-                        <Text style={styles.scanHint}>Richt de camera op de barcode</Text>
-                        {scanProcessing && <ActivityIndicator color="#fff" style={{ marginTop: 16 }} />}
-                    </View>
-                    <TouchableOpacity
-                        style={styles.scanCloseBtn}
-                        onPress={() => setShowScanner(false)}
-                    >
-                        <FeatherIcon name="x" size={24} color="#fff" />
-                    </TouchableOpacity>
-                </View>
-            </Modal>
+            {/* Barcode scanner */}
+            <BarcodeScanner
+                visible={showScanner}
+                onScan={handleBarcodeScanned}
+                onClose={() => setShowScanner(false)}
+                isProcessing={scanProcessing}
+            />
 
             {/* Count modal */}
             <Modal visible={countModal} transparent animationType="fade" onRequestClose={() => setCountModal(false)}>
@@ -331,9 +301,13 @@ export default function VoorraadScreen() {
                 </KeyboardAvoidingView>
             </Modal>
 
-            {/* Adjust modal (via long press) */}
-            <Modal visible={adjustModal} transparent animationType="fade" onRequestClose={() => setAdjustModal(false)}>
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+            {/* Adjust sheet (via long press) */}
+            <RBSheet
+                ref={adjustSheet}
+                customStyles={{ container: { borderTopLeftRadius: 14, borderTopRightRadius: 14 } }}
+                height={360}
+                openDuration={250}>
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
                     <View style={styles.modalCard}>
                         <Text style={styles.modalTitle}>Voorraad aanpassen</Text>
                         {adjustTarget && (
@@ -348,7 +322,6 @@ export default function VoorraadScreen() {
                             value={adjustInput}
                             onChangeText={setAdjustInput}
                             placeholder="-5 of +10"
-                            autoFocus
                         />
                         <Text style={styles.inputLabel}>Reden (optioneel)</Text>
                         <TextInput
@@ -360,7 +333,7 @@ export default function VoorraadScreen() {
                         <View style={styles.modalActions}>
                             <TouchableOpacity
                                 style={styles.cancelBtn}
-                                onPress={() => setAdjustModal(false)}
+                                onPress={() => adjustSheet.current?.close()}
                             >
                                 <Text style={styles.cancelBtnText}>Annuleren</Text>
                             </TouchableOpacity>
@@ -389,7 +362,7 @@ export default function VoorraadScreen() {
                         </View>
                     </View>
                 </KeyboardAvoidingView>
-            </Modal>
+            </RBSheet>
         </SafeAreaView>
     );
 }
@@ -536,42 +509,6 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: '600',
         color: '#DC2626',
-    },
-    // Scanner overlay
-    scanOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        alignItems: 'center',
-        justifyContent: 'center',
-        pointerEvents: 'none',
-    },
-    scanFrame: {
-        width: 250,
-        height: 180,
-        borderWidth: 2,
-        borderColor: '#fff',
-        borderRadius: 12,
-        opacity: 0.8,
-    },
-    scanHint: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '500',
-        marginTop: 16,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        paddingHorizontal: 16,
-        paddingVertical: 6,
-        borderRadius: 8,
-    },
-    scanCloseBtn: {
-        position: 'absolute',
-        top: 56,
-        right: 20,
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     // Modals
     modalOverlay: {

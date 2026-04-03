@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     StyleSheet,
     SafeAreaView,
@@ -11,12 +11,25 @@ import {
 import { useRouter } from 'expo-router';
 import FeatherIcon from 'react-native-vector-icons/Feather';
 import { useQuery } from '@tanstack/react-query';
+import RBSheet from 'react-native-raw-bottom-sheet';
 import { directApi } from '../../lib/directApi';
 import { useMenu } from '../../contexts/MenuContext';
+
+const SORT_OPTIONS = [
+    { label: 'Meest recent', value: 'recent' },
+    { label: 'Naam A–Z', value: 'name_asc' },
+    { label: 'Naam Z–A', value: 'name_desc' },
+    { label: 'Status', value: 'status' },
+];
+
+const STATUS_ORDER: Record<string, number> = { ACTIVE: 0, PLANNED: 1, COMPLETED: 2, ARCHIVED: 3 };
 
 export default function ProjectsScreen() {
     const router = useRouter();
     const { openMenu } = useMenu();
+
+    const sortSheet = React.useRef<any>();
+    const [sortBy, setSortBy] = useState('recent');
 
     const { data: projects, isLoading, refetch } = useQuery({
         queryKey: ['projects'],
@@ -24,6 +37,17 @@ export default function ProjectsScreen() {
             return await directApi.projects.getAll();
         },
     });
+
+    const sortedProjects = useMemo(() => {
+        if (!projects) return [];
+        const arr = [...(projects as any[])];
+        switch (sortBy) {
+            case 'name_asc': return arr.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+            case 'name_desc': return arr.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+            case 'status': return arr.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99));
+            default: return arr.sort((a, b) => new Date(b.createdAt || b.eventStartDate || 0).getTime() - new Date(a.createdAt || a.eventStartDate || 0).getTime());
+        }
+    }, [projects, sortBy]);
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -61,9 +85,14 @@ export default function ProjectsScreen() {
                         </TouchableOpacity>
                         <Text style={styles.title}>Projecten</Text>
                     </View>
-                    <Text style={styles.subtitle}>
-                        {projects?.length || 0} {projects?.length === 1 ? 'project' : 'projecten'}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Text style={styles.subtitle}>
+                            {projects?.length || 0} {(projects as any)?.length === 1 ? 'project' : 'projecten'}
+                        </Text>
+                        <TouchableOpacity onPress={() => sortSheet.current?.open()}>
+                            <FeatherIcon name="sliders" size={20} color="#6B7280" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Projects List */}
@@ -74,14 +103,6 @@ export default function ProjectsScreen() {
                         <RefreshControl refreshing={isLoading} onRefresh={refetch} />
                     }>
                     {(() => {
-                        const STATUS_ORDER: Record<string, number> = { ACTIVE: 0, PLANNED: 1, COMPLETED: 2, ARCHIVED: 3 };
-                        const sortedProjects = [...(projects || [])].sort((a: any, b: any) => {
-                            const statusDiff = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
-                            if (statusDiff !== 0) return statusDiff;
-                            const dateA = a.eventStartDate ? new Date(a.eventStartDate).getTime() : Infinity;
-                            const dateB = b.eventStartDate ? new Date(b.eventStartDate).getTime() : Infinity;
-                            return dateA - dateB;
-                        });
                         return sortedProjects.map((project: any) => (
                         <TouchableOpacity
                             key={project.id}
@@ -139,7 +160,7 @@ export default function ProjectsScreen() {
                     ));
                     })()}
 
-                    {projects?.length === 0 && !isLoading && (
+                    {sortedProjects.length === 0 && !isLoading && (
                         <View style={styles.emptyState}>
                             <FeatherIcon name="folder" size={48} color="#D1D5DB" />
                             <Text style={styles.emptyTitle}>Geen projecten</Text>
@@ -150,6 +171,27 @@ export default function ProjectsScreen() {
                     )}
                 </ScrollView>
             </View>
+
+            {/* Sort sheet */}
+            <RBSheet
+                ref={sortSheet}
+                customStyles={{ container: { borderTopLeftRadius: 14, borderTopRightRadius: 14 } }}
+                height={380}
+                openDuration={250}>
+                <View style={{ borderBottomWidth: 1, borderColor: '#efefef', padding: 16 }}>
+                    <Text style={{ fontSize: 20, fontWeight: '600', textAlign: 'center' }}>Sorteren</Text>
+                </View>
+                <View style={{ padding: 8 }}>
+                    {SORT_OPTIONS.map((opt, i) => (
+                        <TouchableOpacity key={opt.value} onPress={() => { setSortBy(opt.value); sortSheet.current?.close(); }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: i === 0 ? 0 : 1, borderColor: '#e7e7e7' }}>
+                                <View style={{ width: 18, height: 18, borderRadius: 9999, borderWidth: sortBy === opt.value ? 5 : 2, borderColor: '#1d1d1d', marginRight: 12 }} />
+                                <Text style={{ fontSize: 16, fontWeight: '500', color: '#2d2d3a' }}>{opt.label}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </RBSheet>
         </SafeAreaView>
     );
 }

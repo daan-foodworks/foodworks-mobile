@@ -17,6 +17,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import FeatherIcon from 'react-native-vector-icons/Feather';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import RBSheet from 'react-native-raw-bottom-sheet';
 import { directApi } from '../../lib/directApi';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -30,6 +31,10 @@ export default function ProjectDetailScreen() {
     const isShiftleader = user?.role === 'SHIFTLEADER';
 
     const [activeTab, setActiveTab] = useState<TabKey>('info');
+
+    // Delete revenue sheet
+    const deleteRevenueSheet = React.useRef<any>();
+    const [pendingDeleteRevenueId, setPendingDeleteRevenueId] = useState<string | null>(null);
 
     // Inventory planning state
     const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -118,19 +123,9 @@ export default function ProjectDetailScreen() {
         onError: (e: any) => Alert.alert('Fout', e?.message ?? 'Afronden mislukt'),
     });
 
-    const handleDeleteRevenue = (revenueId: string, description: string) => {
-        Alert.alert(
-            'Omzet verwijderen',
-            `Weet je zeker dat je "${description || 'deze omzet'}" wilt verwijderen?`,
-            [
-                { text: 'Annuleren', style: 'cancel' },
-                {
-                    text: 'Verwijderen',
-                    style: 'destructive',
-                    onPress: () => deleteRevenueMutation.mutate(revenueId),
-                },
-            ]
-        );
+    const handleDeleteRevenue = (revenueId: string) => {
+        setPendingDeleteRevenueId(revenueId);
+        deleteRevenueSheet.current?.open();
     };
 
     const openLocation = (location: any) => {
@@ -451,7 +446,7 @@ export default function ProjectDetailScreen() {
                                 </View>
                                 <TouchableOpacity
                                     style={styles.deleteRevBtn}
-                                    onPress={() => handleDeleteRevenue(rev.id, rev.description)}
+                                    onPress={() => handleDeleteRevenue(rev.id)}
                                 >
                                     <FeatherIcon name="trash-2" size={16} color="#9CA3AF" />
                                 </TouchableOpacity>
@@ -1005,6 +1000,32 @@ export default function ProjectDetailScreen() {
                     </SafeAreaView>
                 </KeyboardAvoidingView>
             </Modal>
+
+            {/* Delete revenue sheet */}
+            <RBSheet
+                ref={deleteRevenueSheet}
+                customStyles={{ container: { borderTopLeftRadius: 14, borderTopRightRadius: 14 } }}
+                height={280}
+                openDuration={250}>
+                <View style={{ borderBottomWidth: 1, borderColor: '#efefef', padding: 16 }}>
+                    <Text style={{ fontSize: 20, fontWeight: '600', textAlign: 'center' }}>Verwijderen</Text>
+                </View>
+                <View style={{ padding: 24 }}>
+                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#0e0e0e', marginBottom: 24, textAlign: 'center' }}>
+                        Weet je zeker dat je dit wilt verwijderen?
+                    </Text>
+                    <TouchableOpacity onPress={() => { deleteRevenueSheet.current?.close(); if (pendingDeleteRevenueId) deleteRevenueMutation.mutate(pendingDeleteRevenueId); }}>
+                        <View style={{ alignItems: 'center', justifyContent: 'center', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, backgroundColor: '#ff3c2f', marginBottom: 12 }}>
+                            <Text style={{ fontSize: 17, fontWeight: '600', color: '#fff' }}>Verwijderen</Text>
+                        </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => deleteRevenueSheet.current?.close()}>
+                        <View style={{ alignItems: 'center', justifyContent: 'center', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, borderWidth: 1, borderColor: '#dddce0' }}>
+                            <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>Annuleren</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+            </RBSheet>
 
         </SafeAreaView>
     );
