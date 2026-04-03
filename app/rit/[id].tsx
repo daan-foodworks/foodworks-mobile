@@ -318,6 +318,16 @@ export default function RitDetailScreen() {
     });
 
     const handleTransition = (to: string, label: string) => {
+        if (to === 'IN_PROGRESS') {
+            // Check-in flow: navigate to check-in screen which handles status transition
+            router.push(`/rit/checkin/${id}`);
+            return;
+        }
+        if (to === 'COMPLETED') {
+            // Check-out flow: navigate to check-out screen which handles status transition
+            router.push(`/rit/checkout/${id}`);
+            return;
+        }
         setPendingTransition({ to, label });
         statusSheetRef.current?.open();
     };

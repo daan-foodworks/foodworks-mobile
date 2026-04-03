@@ -288,5 +288,39 @@ export const directApi = {
                 body: JSON.stringify(data),
             });
         },
+        async checkIn(id: string, data: { startKm: number; checkinLicensePlate?: string; damageNotes?: string; damagePhotos?: string[]; tankPhotoUrl?: string }): Promise<any> {
+            return fetchWithAuth(`/vehicle-assignments/${id}/check-in`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        },
+        async checkOut(id: string, data: { endKm: number }): Promise<any> {
+            return fetchWithAuth(`/vehicle-assignments/${id}/check-out`, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        },
+        async uploadPhoto(localUri: string): Promise<string> {
+            const token = await getAuthToken();
+            const formData = new FormData();
+            formData.append('files', {
+                uri: localUri,
+                type: 'image/jpeg',
+                name: 'photo.jpg',
+            } as any);
+            const response = await fetch(`${API_BASE_URL}/upload`, {
+                method: 'POST',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                body: formData,
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ error: 'Upload mislukt' }));
+                throw new Error(err.error || `HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            const fileUrl = data.files?.[0]?.fileUrl;
+            if (!fileUrl) throw new Error('Geen fileUrl in upload response');
+            return fileUrl;
+        },
     },
 };
