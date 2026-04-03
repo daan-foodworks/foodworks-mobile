@@ -257,6 +257,18 @@ export default function RitDetailScreen() {
                     </View>
                 )}
 
+                {/* Km registreren knop */}
+                <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                    <TouchableOpacity
+                        style={[styles.actieBtn, { justifyContent: 'center', gap: 8 }]}
+                        onPress={() => router.push(`/kilometerregistratie/${id}`)}
+                        activeOpacity={0.8}
+                    >
+                        <FeatherIcon name="map" size={16} color="#1976D2" />
+                        <Text style={styles.actieBtnText}>Km registreren</Text>
+                    </TouchableOpacity>
+                </View>
+
                 {/* Info sectie */}
                 <View style={styles.infoCard}>
                     {rit.vehicle && (

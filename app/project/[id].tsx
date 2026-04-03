@@ -30,10 +30,6 @@ export default function ProjectDetailScreen() {
     const isShiftleader = user?.role === 'SHIFTLEADER';
 
     const [activeTab, setActiveTab] = useState<TabKey>('info');
-    const [showRevenueForm, setShowRevenueForm] = useState(false);
-    const [revenueAmount, setRevenueAmount] = useState('');
-    const [revenueDescription, setRevenueDescription] = useState('');
-    const [revenueVatRate, setRevenueVatRate] = useState('21');
 
     // Inventory planning state
     const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -49,32 +45,6 @@ export default function ProjectDetailScreen() {
         queryKey: ['project', id],
         queryFn: () => directApi.projects.getById(id),
         enabled: !!id,
-    });
-
-    const addRevenueMutation = useMutation({
-        mutationFn: async () => {
-            const amount = parseFloat(revenueAmount.replace(',', '.'));
-            if (isNaN(amount) || amount <= 0) {
-                throw new Error('Voer een geldig bedrag in');
-            }
-            return await directApi.revenues.create({
-                projectId: id,
-                amount,
-                vatRate: parseFloat(revenueVatRate) || 0,
-                description: revenueDescription || undefined,
-                date: new Date().toISOString(),
-            });
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['project', id] });
-            setShowRevenueForm(false);
-            setRevenueAmount('');
-            setRevenueDescription('');
-            setRevenueVatRate('21');
-        },
-        onError: (error: Error) => {
-            Alert.alert('Fout', error.message);
-        },
     });
 
     const deleteRevenueMutation = useMutation({
@@ -499,10 +469,10 @@ export default function ProjectDetailScreen() {
                 )}
             </ScrollView>
 
-            {/* Floating add button */}
+            {/* Omzet registreren knop */}
             <TouchableOpacity
                 style={styles.fab}
-                onPress={() => setShowRevenueForm(true)}
+                onPress={() => router.push(`/omzetregistratie/${id}`)}
                 activeOpacity={0.8}
             >
                 <FeatherIcon name="plus" size={22} color="#fff" />
@@ -1036,112 +1006,6 @@ export default function ProjectDetailScreen() {
                 </KeyboardAvoidingView>
             </Modal>
 
-            {/* Revenue Entry Modal */}
-            <Modal
-                visible={showRevenueForm}
-                animationType="slide"
-                presentationStyle="pageSheet"
-                onRequestClose={() => setShowRevenueForm(false)}
-            >
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={{ flex: 1 }}
-                >
-                    <SafeAreaView style={styles.modalContainer}>
-                        <View style={styles.modalHeader}>
-                            <TouchableOpacity onPress={() => setShowRevenueForm(false)}>
-                                <Text style={styles.modalCancel}>Annuleren</Text>
-                            </TouchableOpacity>
-                            <Text style={styles.modalTitle}>Omzet toevoegen</Text>
-                            <TouchableOpacity
-                                onPress={() => addRevenueMutation.mutate()}
-                                disabled={addRevenueMutation.isPending || !revenueAmount}
-                            >
-                                <Text style={[
-                                    styles.modalSave,
-                                    (!revenueAmount || addRevenueMutation.isPending) && { opacity: 0.4 },
-                                ]}>
-                                    {addRevenueMutation.isPending ? 'Opslaan...' : 'Opslaan'}
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <ScrollView style={styles.modalContent}>
-                            <Text style={styles.modalProjectTitle}>{project.title}</Text>
-
-                            <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>Bedrag (excl. BTW) *</Text>
-                                <View style={styles.amountInputWrapper}>
-                                    <Text style={styles.currencySymbol}>€</Text>
-                                    <TextInput
-                                        style={styles.amountInput}
-                                        placeholder="0,00"
-                                        placeholderTextColor="#9CA3AF"
-                                        keyboardType="decimal-pad"
-                                        value={revenueAmount}
-                                        onChangeText={setRevenueAmount}
-                                        autoFocus
-                                    />
-                                </View>
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>BTW-percentage</Text>
-                                <View style={styles.vatOptions}>
-                                    {['0', '9', '21'].map((rate) => (
-                                        <TouchableOpacity
-                                            key={rate}
-                                            style={[styles.vatOption, revenueVatRate === rate && styles.vatOptionActive]}
-                                            onPress={() => setRevenueVatRate(rate)}
-                                        >
-                                            <Text style={[styles.vatOptionText, revenueVatRate === rate && styles.vatOptionTextActive]}>
-                                                {rate}%
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            </View>
-
-                            <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>Beschrijving (optioneel)</Text>
-                                <TextInput
-                                    style={styles.textInput}
-                                    placeholder="Bijv. dag 1 verkoop, catering, etc."
-                                    placeholderTextColor="#9CA3AF"
-                                    value={revenueDescription}
-                                    onChangeText={setRevenueDescription}
-                                    multiline
-                                    numberOfLines={3}
-                                />
-                            </View>
-
-                            {revenueAmount ? (
-                                <View style={styles.previewCard}>
-                                    <Text style={styles.previewTitle}>Samenvatting</Text>
-                                    <View style={styles.previewRow}>
-                                        <Text style={styles.previewLabel}>Excl. BTW</Text>
-                                        <Text style={styles.previewValue}>
-                                            €{parseFloat(revenueAmount.replace(',', '.') || '0').toFixed(2)}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.previewRow}>
-                                        <Text style={styles.previewLabel}>BTW ({revenueVatRate}%)</Text>
-                                        <Text style={styles.previewValue}>
-                                            €{(parseFloat(revenueAmount.replace(',', '.') || '0') * parseFloat(revenueVatRate) / 100).toFixed(2)}
-                                        </Text>
-                                    </View>
-                                    <View style={[styles.previewRow, styles.previewTotal]}>
-                                        <Text style={styles.previewTotalLabel}>Totaal incl. BTW</Text>
-                                        <Text style={styles.previewTotalValue}>
-                                            €{(parseFloat(revenueAmount.replace(',', '.') || '0') * (1 + parseFloat(revenueVatRate) / 100)).toFixed(2)}
-                                        </Text>
-                                    </View>
-                                </View>
-                            ) : null}
-                        </ScrollView>
-                    </SafeAreaView>
-                </KeyboardAvoidingView>
-            </Modal>
         </SafeAreaView>
     );
 }

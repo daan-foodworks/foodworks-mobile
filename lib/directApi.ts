@@ -232,6 +232,32 @@ export const directApi = {
                 body: JSON.stringify({ items, userId }),
             });
         },
+        async closeout(projectId: string, items: { allocationId: string; remainingQuantity: number; disposition: 'RETURN' | 'WASTE' }[]): Promise<any> {
+            return fetchWithAuth(`/projects/${projectId}/closeout`, {
+                method: 'POST',
+                body: JSON.stringify({ items }),
+            });
+        },
+    },
+
+    receipts: {
+        async create(data: {
+            locationId: string;
+            items: Array<{
+                productId: string;
+                quantity: number;
+                unitCost?: number;
+                batchNumber?: string;
+                expiryDate?: string;
+                notes?: string;
+            }>;
+            supplierId?: string;
+        }): Promise<any> {
+            return fetchWithAuth('/receipts', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        },
     },
 
     transport: {
@@ -254,6 +280,12 @@ export const directApi = {
             return fetchWithAuth(`/vehicle-assignments/${id}/status`, {
                 method: 'PATCH',
                 body: JSON.stringify({ status }),
+            });
+        },
+        async addMileage(ritId: string, data: { startKm: number; endKm: number; purpose: 'ZAKELIJK' | 'WOON_WERK'; notes?: string }): Promise<any> {
+            return fetchWithAuth(`/vehicle-assignments/${ritId}/mileage`, {
+                method: 'POST',
+                body: JSON.stringify(data),
             });
         },
     },
