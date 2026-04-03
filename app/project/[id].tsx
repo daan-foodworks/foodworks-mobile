@@ -270,9 +270,59 @@ export default function ProjectDetailScreen() {
                     </TouchableOpacity>
                 )}
                 {project.clientName && (
-                    <InfoRow icon="briefcase" label="Klant" value={project.clientName} last />
+                    <InfoRow icon="briefcase" label="Klant" value={project.clientName} />
+                )}
+                {project.salesType && (
+                    <InfoRow
+                        icon="tag"
+                        label="Verkooptype"
+                        value={project.salesType === 'BUYOUT' ? 'Afgekocht' : 'Vrije verkoop'}
+                    />
+                )}
+                {project.salesType === 'BUYOUT' && project.buyoutAmount != null && (
+                    <InfoRow
+                        icon="dollar-sign"
+                        label="Afgekocht bedrag (excl. BTW)"
+                        value={`€${project.buyoutAmount.toFixed(2)}`}
+                    />
+                )}
+                {project.buyoutContactPersonCount != null && (
+                    <InfoRow
+                        icon="users"
+                        label="Aantal personen"
+                        value={String(project.buyoutContactPersonCount)}
+                    />
+                )}
+                {project.buyoutNotes && (
+                    <InfoRow icon="message-square" label="Notitie afkoop" value={project.buyoutNotes} last />
                 )}
             </View>
+
+            {/* Eventtijden */}
+            {project.eventSchedule && Array.isArray(project.eventSchedule) && project.eventSchedule.length > 0 && (
+                <View style={[styles.infoCard, { marginTop: 12 }]}>
+                    <Text style={styles.cardTitle}>Eventtijden</Text>
+                    {(project.eventSchedule as any[]).map((slot: any, idx: number, arr: any[]) => (
+                        <View key={idx} style={[styles.infoRow, idx === arr.length - 1 && { borderBottomWidth: 0 }]}>
+                            <View style={styles.infoIcon}>
+                                <FeatherIcon name="clock" size={16} color="#6B7280" />
+                            </View>
+                            <View style={styles.infoContent}>
+                                <Text style={styles.infoLabel}>
+                                    {slot.date
+                                        ? new Date(slot.date).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' })
+                                        : `Dag ${idx + 1}`}
+                                </Text>
+                                <Text style={styles.infoValue}>
+                                    {slot.startTime && slot.endTime
+                                        ? `${slot.startTime} – ${slot.endTime}`
+                                        : slot.startTime || slot.endTime || '—'}
+                                </Text>
+                            </View>
+                        </View>
+                    ))}
+                </View>
+            )}
 
             {/* Shiftleaders section */}
             {project.shiftleaders && project.shiftleaders.length > 0 && (
