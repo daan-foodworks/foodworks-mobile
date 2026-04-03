@@ -332,7 +332,8 @@ export default function RitDetailScreen() {
             return t && !isPast(new Date(t));
         })
         : -1;
-    const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : (isInProgress && stops.length > 0 ? stops[stops.length - 1] : null);
+    // Fallback: toon eerste stop als alle stops voorbij zijn (niet de laatste)
+    const nextStop = nextStopIndex >= 0 ? stops[nextStopIndex] : (isInProgress && stops.length > 0 ? stops[0] : null);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
