@@ -26,7 +26,10 @@ export default function OperationeelScreen() {
 
     const openTasks = (tasks as any[])?.filter((t: any) => t.status === 'TODO').length ?? null;
     const todayRitten = (ritten as any[])?.filter((r: any) => r.date && isToday(new Date(r.date))).length ?? null;
-    const lowStock = (stock as any[])?.filter((s: any) => s.minStock !== null && s.quantity <= s.minStock).length ?? null;
+    const stockList = (stock as any)?.stock ?? (Array.isArray(stock) ? stock : []);
+    const lowStock = stockList.length > 0
+        ? stockList.filter((s: any) => s.minStock !== null && s.quantity <= s.minStock).length
+        : null;
 
     const CARDS = [
         {
