@@ -30,6 +30,7 @@ export default function TasksScreen() {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showDone, setShowDone] = useState(false);
+    const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
     const [modalView, setModalView] = useState<ModalView>('form');
     const [newTitle, setNewTitle] = useState('');
     const [newDescription, setNewDescription] = useState('');
@@ -43,7 +44,11 @@ export default function TasksScreen() {
         enabled: !!user,
     });
 
-    const tasks = (rawTasks || []).filter((t: any) => showDone || t.status !== 'DONE');
+    const tasks = (rawTasks || []).filter((t: any) => {
+        if (!showDone && t.status === 'DONE') return false;
+        if (priorityFilter && t.priority !== priorityFilter) return false;
+        return true;
+    });
 
     const { data: projects } = useQuery({
         queryKey: ['projects'],
@@ -323,6 +328,37 @@ export default function TasksScreen() {
                     </View>
                 </View>
 
+                {/* Priority filter chips */}
+                <View style={styles.filterRow}>
+                    {[
+                        { key: null, label: 'Alle' },
+                        { key: 'HIGH', label: 'Hoog', color: '#EF4444' },
+                        { key: 'MEDIUM', label: 'Gemiddeld', color: '#F59E0B' },
+                        { key: 'LOW', label: 'Laag', color: '#10B981' },
+                    ].map((chip) => (
+                        <TouchableOpacity
+                            key={chip.key ?? 'alle'}
+                            style={[
+                                styles.filterChip,
+                                priorityFilter === chip.key && {
+                                    backgroundColor: chip.color || '#1976D2',
+                                    borderColor: chip.color || '#1976D2',
+                                },
+                            ]}
+                            onPress={() => setPriorityFilter(chip.key)}
+                            activeOpacity={0.7}
+                        >
+                            {chip.color && (
+                                <View style={[styles.filterDot, { backgroundColor: chip.color }]} />
+                            )}
+                            <Text style={[
+                                styles.filterChipText,
+                                priorityFilter === chip.key && { color: '#fff' },
+                            ]}>{chip.label}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
                 <ScrollView
                     style={styles.list}
                     contentContainerStyle={styles.listContent}
@@ -446,6 +482,36 @@ const styles = StyleSheet.create({
     emptyTitle: { fontSize: 18, fontWeight: '600', color: '#374151', marginTop: 16, marginBottom: 4 },
     emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
 
+    filterRow: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        gap: 8,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    filterChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        backgroundColor: '#F3F4F6',
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    filterDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+    },
+    filterChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#374151',
+    },
     doneToggle: {
         flexDirection: 'row', alignItems: 'center', gap: 5,
         paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,

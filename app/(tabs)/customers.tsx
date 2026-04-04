@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     StyleSheet,
     SafeAreaView,
@@ -7,6 +7,7 @@ import {
     TouchableOpacity,
     ScrollView,
     RefreshControl,
+    TextInput,
 } from 'react-native';
 import FeatherIcon from 'react-native-vector-icons/Feather';
 import { useQuery } from '@tanstack/react-query';
@@ -17,32 +18,31 @@ import { useMenu } from '../../contexts/MenuContext';
 export default function CustomersScreen() {
     const { openMenu } = useMenu();
     const router = useRouter();
+    const [search, setSearch] = useState('');
+
     const { data, isLoading, refetch, error } = useQuery({
         queryKey: ['customers'],
         queryFn: async () => {
-            try {
-                console.log('Fetching customers...');
-                const result = await directApi.customers.getAll();
-                console.log('Customers result:', result);
-                // API returns {customers: [...], total: number}
-                return result;
-            } catch (err) {
-                console.error('Error fetching customers:', err);
-                throw err;
-            }
+            const result = await directApi.customers.getAll();
+            return result;
         },
     });
 
     // Extract customers array from response
     const customers = (data as any)?.customers || [];
 
-    console.log('Customers data:', data);
-    console.log('Customers array:', customers);
-    console.log('Is loading:', isLoading);
-    console.log('Error:', error);
-
     // Ensure customers is always an array
-    const customersList = Array.isArray(customers) ? customers : [];
+    const allCustomers = Array.isArray(customers) ? customers : [];
+
+    const customersList = useMemo(() => {
+        if (!search.trim()) return allCustomers;
+        const q = search.toLowerCase();
+        return allCustomers.filter((c: any) =>
+            c.name?.toLowerCase().includes(q) ||
+            c.email?.toLowerCase().includes(q) ||
+            c.phone?.toLowerCase().includes(q)
+        );
+    }, [allCustomers, search]);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -58,6 +58,19 @@ export default function CustomersScreen() {
                     <Text style={styles.subtitle}>
                         {customersList.length} {customersList.length === 1 ? 'klant' : 'klanten'}
                     </Text>
+                </View>
+
+                {/* Search Bar */}
+                <View style={styles.searchContainer}>
+                    <FeatherIcon name="search" size={16} color="#9CA3AF" style={{ marginRight: 8 }} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Zoek op naam, e-mail of telefoon..."
+                        placeholderTextColor="#9CA3AF"
+                        value={search}
+                        onChangeText={setSearch}
+                        clearButtonMode="while-editing"
+                    />
                 </View>
 
                 {/* Error State */}
@@ -223,6 +236,22 @@ const styles = StyleSheet.create({
         fontWeight: '400',
         color: '#9CA3AF',
         textAlign: 'center',
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginHorizontal: 16,
+        marginTop: 12,
+        marginBottom: 4,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: '#111827',
     },
     /** Error State */
     errorContainer: {

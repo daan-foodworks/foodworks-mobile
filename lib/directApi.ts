@@ -149,6 +149,11 @@ export const directApi = {
                 method: 'PATCH',
             });
         },
+        async delete(id: string): Promise<void> {
+            return fetchWithAuth(`/notifications/${id}`, {
+                method: 'DELETE',
+            });
+        },
     },
 
     revenues: {
